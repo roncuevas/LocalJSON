@@ -6,7 +6,7 @@ public final class LocalJSON {
         return try! Data(contentsOf: fileURL)
     }
 
-    public static func getJSON<T: Decodable>(from file: String, as type: T) throws -> T {
+    public static func getJSON<T: Decodable>(from file: String, as type: T.Type) throws -> T {
         let fileURL = URL(fileURLWithPath: #file).deletingLastPathComponent().appendingPathComponent(file)
         let data = try Data(contentsOf: fileURL)
         return try JSONDecoder().decode(T.self, from: data)
