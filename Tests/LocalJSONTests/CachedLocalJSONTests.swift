@@ -42,6 +42,18 @@ private final class SpyLocalJSON: LocalJSONProtocol, @unchecked Sendable {
         try inner.writeJSON(data: data, to: path)
     }
 
+    func exists(file: String) -> Bool {
+        inner.exists(file: file)
+    }
+
+    func delete(file: String) throws {
+        try inner.delete(file: file)
+    }
+
+    func listFiles(in directory: String) throws -> [String] {
+        try inner.listFiles(in: directory)
+    }
+
     /// Seed data directly into the underlying mock without incrementing spy counters.
     func seed<T: Encodable>(data: T, to path: String) throws {
         try inner.writeJSON(data: data, to: path)

@@ -36,6 +36,32 @@ public final class MockLocalJSON: LocalJSONProtocol, @unchecked Sendable {
         let jsonData = try encoder.encode(data)
         withLock { $0[path] = jsonData }
     }
+
+    public func exists(file: String) -> Bool {
+        withLock { $0[file] != nil }
+    }
+
+    public func delete(file: String) throws {
+        let existed: Bool = withLock { $0.removeValue(forKey: file) != nil }
+        if !existed {
+            throw MockLocalJSONError.fileNotFound(file)
+        }
+    }
+
+    public func listFiles(in directory: String) throws -> [String] {
+        withLock { storage in
+            storage.keys.filter { key in
+                if directory.isEmpty {
+                    return !key.contains("/")
+                }
+                let prefix = directory.hasSuffix("/") ? directory : "\(directory)/"
+                guard key.hasPrefix(prefix) else { return false }
+                let remainder = String(key.dropFirst(prefix.count))
+                return !remainder.contains("/")
+            }
+            .sorted()
+        }
+    }
 }
 
 public enum MockLocalJSONError: Error {

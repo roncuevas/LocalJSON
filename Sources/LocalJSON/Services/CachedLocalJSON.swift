@@ -86,6 +86,19 @@ public final class CachedLocalJSON: LocalJSONProtocol, @unchecked Sendable {
         }
     }
 
+    public func exists(file: String) -> Bool {
+        wrapped.exists(file: file)
+    }
+
+    public func delete(file: String) throws {
+        try wrapped.delete(file: file)
+        _ = withLock { $0.removeValue(forKey: file) }
+    }
+
+    public func listFiles(in directory: String) throws -> [String] {
+        try wrapped.listFiles(in: directory)
+    }
+
     // MARK: - Cache management
 
     public func clearCache() {
