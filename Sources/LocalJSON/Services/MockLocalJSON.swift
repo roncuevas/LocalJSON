@@ -1,12 +1,25 @@
 import Foundation
 
-public final class MockLocalJSON: LocalJSONProtocol {
-    public nonisolated(unsafe) var mockData: [String: Data] = [:]
+public final class MockLocalJSON: LocalJSONProtocol, @unchecked Sendable {
+    /// Thread-safe via `lock`. All access to `_storage` must go through `withLock`.
+    private var _storage: [String: Data] = [:]
+    private let lock = NSLock()
+
+    private func withLock<T>(_ body: (inout [String: Data]) throws -> T) rethrows -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return try body(&_storage)
+    }
+
+    public var mockData: [String: Data] {
+        get { withLock { $0 } }
+        set { withLock { $0 = newValue } }
+    }
 
     public init() {}
 
     public func getJSON(from file: String) throws -> Data {
-        guard let data = mockData[file] else {
+        guard let data = withLock({ $0[file] }) else {
             throw MockLocalJSONError.fileNotFound(file)
         }
         return data
@@ -21,7 +34,7 @@ public final class MockLocalJSON: LocalJSONProtocol {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
         let jsonData = try encoder.encode(data)
-        mockData[path] = jsonData
+        withLock { $0[path] = jsonData }
     }
 }
 
