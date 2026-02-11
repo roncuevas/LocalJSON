@@ -55,7 +55,6 @@ public extension LocalJSONProtocol {
 
 // MARK: - File observation
 
-@available(iOS 13.0, macOS 10.15, tvOS 13.0, watchOS 6.0, *)
 public extension LocalJSONProtocol {
     func changes<T: Decodable & Sendable>(
         to file: String,
