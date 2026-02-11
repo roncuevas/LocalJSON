@@ -44,7 +44,7 @@ let user = try storage.getJSON(from: "user.json", as: User.self)
 let data = try storage.getJSON(from: "user.json")
 ```
 
-All files are stored in the app's Documents directory. Writes use pretty-printed JSON formatting.
+All files are stored in the app's Documents directory. Writes use pretty-printed JSON formatting by default.
 
 ### Async/await
 
@@ -54,6 +54,93 @@ Every method on `LocalJSONProtocol` has an async overload that works automatical
 let user = try await storage.getJSON(from: "user.json", as: User.self)
 try await storage.writeJSON(data: user, to: "user.json")
 ```
+
+### File management
+
+```swift
+// Check if a file exists
+let exists = storage.exists(file: "user.json")
+
+// Delete a file
+try storage.delete(file: "user.json")
+
+// List all JSON files in the root directory
+let files = try storage.listFiles()
+
+// List JSON files in a subdirectory
+let subFiles = try storage.listFiles(in: "backups")
+```
+
+### Subdirectories
+
+Intermediate directories are created automatically on write:
+
+```swift
+try storage.writeJSON(data: user, to: "users/profiles/ron.json")
+let user = try storage.getJSON(from: "users/profiles/ron.json", as: User.self)
+```
+
+### `@JSONStored` property wrapper
+
+Persist properties automatically with `@JSONStored`:
+
+```swift
+class Settings {
+    @JSONStored("theme.json")
+    var theme: Theme?
+
+    @JSONStored("prefs.json", using: CachedLocalJSON(wrapping: LocalJSON()))
+    var preferences: Preferences?
+}
+
+let settings = Settings()
+settings.theme = Theme(name: "dark") // writes to disk
+let current = settings.theme         // reads from disk
+
+// Error-handling via projected value
+try settings.$theme.save(Theme(name: "light"))
+let loaded = try settings.$theme.load()
+try settings.$theme.remove()
+```
+
+### Custom encoder/decoder
+
+All services accept optional `JSONEncoder` and `JSONDecoder` in their initializers:
+
+```swift
+let encoder = JSONEncoder()
+encoder.dateEncodingStrategy = .iso8601
+
+let decoder = JSONDecoder()
+decoder.dateDecodingStrategy = .iso8601
+
+let storage = LocalJSON(encoder: encoder, decoder: decoder)
+let mock = MockLocalJSON(encoder: encoder, decoder: decoder)
+let cached = CachedLocalJSON(wrapping: storage, encoder: encoder, decoder: decoder)
+```
+
+Defaults: pretty-printed encoder, standard decoder.
+
+### File observation
+
+Observe file changes reactively with `AsyncStream`:
+
+```swift
+for await user in storage.changes(to: "user.json", as: User.self, checkEvery: 2) {
+    if let user {
+        print("User updated: \(user.name)")
+    } else {
+        print("File deleted or unreadable")
+    }
+}
+```
+
+- Emits the current value immediately
+- Polls every `checkEvery` seconds (default: 1)
+- Only emits when raw bytes change
+- Yields `nil` when the file doesn't exist or can't be decoded
+- Cancels cleanly when the task is cancelled
+- Works with any `LocalJSONProtocol` conformer
 
 ### Dependency injection with the protocol
 
@@ -161,34 +248,48 @@ cached.invalidate(file: "user.json")
 cached.clearCache()
 ```
 
-#### Combining with dependency injection
+### Error handling
 
-Since `CachedLocalJSON` conforms to `LocalJSONProtocol`, it works anywhere the protocol is expected:
+`LocalJSON` throws typed `LocalJSONError` values:
 
 ```swift
-// Production: cached file system
-let storage: any LocalJSONProtocol = CachedLocalJSON(wrapping: LocalJSON())
-
-// Tests: cached mock (useful for verifying dedup behavior)
-let storage: any LocalJSONProtocol = CachedLocalJSON(wrapping: MockLocalJSON())
-
-// SwiftUI environment
-ContentView()
-    .environment(\.localJSON, CachedLocalJSON(wrapping: LocalJSON()))
+do {
+    let user = try storage.getJSON(from: "user.json", as: User.self)
+} catch let error as LocalJSONError {
+    switch error {
+    case .fileNotFound(let file):
+        print("Missing: \(file)")
+    case .decodingFailed(let file, let underlying):
+        print("Bad JSON in \(file): \(underlying)")
+    case .encodingFailed(let underlying):
+        print("Encode error: \(underlying)")
+    case .writeFailed(let file, let underlying):
+        print("Write error for \(file): \(underlying)")
+    case .deleteFailed(let file, let underlying):
+        print("Delete error for \(file): \(underlying)")
+    case .directoryNotFound(let dir):
+        print("No directory: \(dir)")
+    }
+}
 ```
+
+All cases conform to `LocalizedError` with descriptive `errorDescription`. `MockLocalJSON` uses its own `MockLocalJSONError`. `CachedLocalJSON` passes through errors from its wrapped implementation.
 
 ## Architecture
 
 ```
 Sources/LocalJSON/
 ├── Protocols/
-│   └── LocalJSONProtocol.swift        # Protocol + async overloads
+│   └── LocalJSONProtocol.swift        # Protocol + async overloads + file observation
 ├── Services/
 │   ├── LocalJSON.swift                # File system implementation
 │   ├── MockLocalJSON.swift            # In-memory implementation for tests
 │   └── CachedLocalJSON.swift          # Caching decorator (read cache + write dedup)
 ├── Models/
-│   └── CachePolicy.swift             # Cache configuration
+│   ├── CachePolicy.swift              # Cache configuration
+│   └── LocalJSONError.swift           # Typed error enum
+├── PropertyWrappers/
+│   └── JSONStored.swift               # @JSONStored property wrapper
 └── Extensions/
     └── LocalJSON+Environment.swift    # SwiftUI EnvironmentValues
 ```
