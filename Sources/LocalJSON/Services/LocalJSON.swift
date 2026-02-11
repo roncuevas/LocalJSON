@@ -1,11 +1,23 @@
 import Foundation
 
-public final class LocalJSON: LocalJSONProtocol {
+public final class LocalJSON: LocalJSONProtocol, @unchecked Sendable {
+    private let encoder: JSONEncoder
+    private let decoder: JSONDecoder
+
     private var documentsURL: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
 
-    public init() {}
+    public init(encoder: JSONEncoder? = nil, decoder: JSONDecoder? = nil) {
+        if let encoder {
+            self.encoder = encoder
+        } else {
+            let e = JSONEncoder()
+            e.outputFormatting = .prettyPrinted
+            self.encoder = e
+        }
+        self.decoder = decoder ?? JSONDecoder()
+    }
 
     public func getJSON(from file: String) throws -> Data {
         let fileURL = documentsURL.appendingPathComponent(file)
@@ -19,15 +31,13 @@ public final class LocalJSON: LocalJSONProtocol {
     public func getJSON<T: Decodable>(from file: String, as type: T.Type) throws -> T {
         let data = try getJSON(from: file)
         do {
-            return try JSONDecoder().decode(T.self, from: data)
+            return try decoder.decode(T.self, from: data)
         } catch {
             throw LocalJSONError.decodingFailed(file: file, underlying: error)
         }
     }
 
     public func writeJSON<T: Encodable>(data: T, to path: String) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .prettyPrinted
         let jsonData: Data
         do {
             jsonData = try encoder.encode(data)

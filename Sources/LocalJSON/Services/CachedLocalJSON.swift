@@ -9,6 +9,8 @@ public final class CachedLocalJSON: LocalJSONProtocol, @unchecked Sendable {
 
     private let wrapped: any LocalJSONProtocol
     private let policy: CachePolicy
+    private let encoder: JSONEncoder
+    private let decoder: JSONDecoder
     private var cache: [String: CacheEntry] = [:]
     private let lock = NSLock()
 
@@ -18,9 +20,22 @@ public final class CachedLocalJSON: LocalJSONProtocol, @unchecked Sendable {
         return try body(&cache)
     }
 
-    public init(wrapping inner: any LocalJSONProtocol, policy: CachePolicy = CachePolicy()) {
+    public init(
+        wrapping inner: any LocalJSONProtocol,
+        policy: CachePolicy = CachePolicy(),
+        encoder: JSONEncoder? = nil,
+        decoder: JSONDecoder? = nil
+    ) {
         self.wrapped = inner
         self.policy = policy
+        if let encoder {
+            self.encoder = encoder
+        } else {
+            let e = JSONEncoder()
+            e.outputFormatting = .prettyPrinted
+            self.encoder = e
+        }
+        self.decoder = decoder ?? JSONDecoder()
     }
 
     // MARK: - LocalJSONProtocol
@@ -57,12 +72,10 @@ public final class CachedLocalJSON: LocalJSONProtocol, @unchecked Sendable {
 
     public func getJSON<T: Decodable>(from file: String, as type: T.Type) throws -> T {
         let data = try getJSON(from: file)
-        return try JSONDecoder().decode(T.self, from: data)
+        return try decoder.decode(T.self, from: data)
     }
 
     public func writeJSON<T: Encodable>(data: T, to path: String) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .prettyPrinted
         let jsonData = try encoder.encode(data)
 
         if policy.writeDedupEnabled {

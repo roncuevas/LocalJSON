@@ -6,10 +6,14 @@ import Foundation
 
 /// Wraps a `MockLocalJSON` and counts read/write calls (thread-safe).
 private final class SpyLocalJSON: LocalJSONProtocol, @unchecked Sendable {
-    private let inner = MockLocalJSON()
+    private let inner: MockLocalJSON
     private let lock = NSLock()
     private var _readCount = 0
     private var _writeCount = 0
+
+    init(encoder: JSONEncoder? = nil, decoder: JSONDecoder? = nil) {
+        self.inner = MockLocalJSON(encoder: encoder, decoder: decoder)
+    }
 
     var readCount: Int {
         lock.lock()
