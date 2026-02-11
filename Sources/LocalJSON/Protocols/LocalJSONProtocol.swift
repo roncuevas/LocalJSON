@@ -52,3 +52,47 @@ public extension LocalJSONProtocol {
         return try sync()
     }
 }
+
+// MARK: - File observation
+
+@available(iOS 13.0, macOS 10.15, tvOS 13.0, watchOS 6.0, *)
+public extension LocalJSONProtocol {
+    func changes<T: Decodable & Sendable>(
+        to file: String,
+        as type: T.Type,
+        checkEvery interval: TimeInterval = 1
+    ) -> AsyncStream<T?> {
+        let storage: any LocalJSONProtocol = self
+
+        return AsyncStream { continuation in
+            let task = Task { @Sendable in
+                var isFirstPoll = true
+                var lastBytes: Data?
+                let readRaw = { (f: String) -> Data? in try? storage.getJSON(from: f) }
+                let decode = { (f: String) -> T? in try? storage.getJSON(from: f, as: type) }
+
+                while !Task.isCancelled {
+                    let currentBytes = readRaw(file)
+
+                    if isFirstPoll || currentBytes != lastBytes {
+                        isFirstPoll = false
+                        lastBytes = currentBytes
+                        if currentBytes != nil {
+                            continuation.yield(decode(file))
+                        } else {
+                            continuation.yield(nil)
+                        }
+                    }
+
+                    try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                }
+
+                continuation.finish()
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
+        }
+    }
+}
